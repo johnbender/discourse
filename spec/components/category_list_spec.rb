@@ -2,54 +2,86 @@ require 'spec_helper'
 require 'category_list'
 
 describe CategoryList do
-
   let(:user) { Fabricate(:user) }
   let(:admin) { Fabricate(:admin) }
-  let(:category_list) { CategoryList.new(Guardian.new user) }
 
   context "security" do
-    it "properly hide secure categories" do
-      cat = Fabricate(:category)
-      Fabricate(:topic, category: cat)
-      cat.set_permissions(:admins => :full)
-      cat.save
-
-      # uncategorized + this
-      expect(CategoryList.new(Guardian.new admin).categories.count).to eq(2)
-      expect(CategoryList.new(Guardian.new user).categories.count).to eq(0)
-      expect(CategoryList.new(Guardian.new nil).categories.count).to eq(0)
-    end
-
-    it "doesn't show topics that you can't view" do
-      public_cat = Fabricate(:category) # public category
-      Fabricate(:topic, category: public_cat)
-
+    let(:private_cat) {
       private_cat = Fabricate(:category) # private category
       Fabricate(:topic, category: private_cat)
       private_cat.set_permissions(admins: :full)
       private_cat.save
+      private_cat
+    }
 
-      secret_subcat = Fabricate(:category, parent_category_id: public_cat.id) # private subcategory
-      Fabricate(:topic, category: secret_subcat)
-      secret_subcat.set_permissions(admins: :full)
-      secret_subcat.save
+    it "properly hide secure categories" do
+      assume do
+        admin_list = CategoryList.new(Guardian.new admin).categories
+        user_list = CategoryList.new(Guardian.new user).categories
+        nil_list = CategoryList.new(Guardian.new nil).categories
+      end
 
-      CategoryFeaturedTopic.feature_topics
+      prove do
+        expect(admin_list.count).to eq(2)
+        expect(user_list.count).to eq(0)
+        expect(nil_list.count).to eq(0)
+      end
+    end
 
-      expect(CategoryList.new(Guardian.new(admin)).categories.find { |x| x.name == public_cat.name }.displayable_topics.count).to eq(2)
-      expect(CategoryList.new(Guardian.new(admin)).categories.find { |x| x.name == private_cat.name }.displayable_topics.count).to eq(1)
+    it "doesn't show topics that you can't view" do
+      assume do
+        public_cat = Fabricate(:category) # public category
+        Fabricate(:topic, category: public_cat)
+        secret_subcat = Fabricate(:category, parent_category_id: public_cat.id)
+        Fabricate(:topic, category: secret_subcat)
+        secret_subcat.set_permissions(admins: :full)
 
-      expect(CategoryList.new(Guardian.new(user)).categories.find { |x| x.name == public_cat.name }.displayable_topics.count).to eq(1)
-      expect(CategoryList.new(Guardian.new(user)).categories.find { |x| x.name == private_cat.name }).to eq(nil)
+        secret_subcat.save
 
-      expect(CategoryList.new(Guardian.new(nil)).categories.find { |x| x.name == public_cat.name }.displayable_topics.count).to eq(1)
-      expect(CategoryList.new(Guardian.new(nil)).categories.find { |x| x.name == private_cat.name }).to eq(nil)
+        # what the flying fuck is this
+        CategoryFeaturedTopic.feature_topics
+
+        public_category_admin_topics = CategoryList.new(Guardian.new(admin)).categories.find { |x|
+          x.name == public_cat.name
+        }.displayable_topics
+
+        private_category_admin_topics = CategoryList.new(Guardian.new(admin)).categories.find { |x|
+          x.name == private_cat.name
+        }.displayable_topics
+
+        public_category_user_topics = CategoryList.new(Guardian.new(user)).categories.find { |x|
+          x.name == public_cat.name
+        }.displayable_topics
+
+        private_category_user_topics = CategoryList.new(Guardian.new(user)).categories.find { |x|
+          x.name == private_cat.name
+        }.displayable_topics
+
+        public_category_nil_topics = CategoryList.new(Guardian.new(nil)).categories.find { |x|
+          x.name == public_cat.name
+        }.displayable_topics
+
+        private_category_nil_topics = CategoryList.new(Guardian.new(nil)).categories.find { |x|
+          x.name == private_cat.name
+        }.displayable_topics
+      end
+
+      prove do
+        expect(public_category_admin_topics.count).to eq(2)
+        expect(private_category_admin_topics.count).to eq(1)
+
+        expect(public_category_user_topics.count).to eq(1)
+        expect(private_category_user_topics.count).to eq(0)
+
+        expect(public_category_user_topics.count).to eq(1)
+        expect(private_category_user_topics.count).to eq(0)
+      end
     end
   end
 
   context "with a category" do
-
     let!(:topic_category) { Fabricate(:category) }
+    let(:category_list) { CategoryList.new(Guardian.new user) }
 
     context "without a featured topic" do
 
@@ -150,5 +182,4 @@ describe CategoryList do
       end
     end
   end
-
 end
